@@ -33,24 +33,28 @@
 </div>
 <div class="app">
     <div class="container">
-        <form action="#" onsubmit="compressFromBrowser();return false">
-            <div class="input-row">
-                <div>Go to <a href="https://animator.wokwi.com/">Wokwi Animator</a> and paste the generated code here:</div>
+        <form class="w-100" action="#" onsubmit="compressFromBrowser();return false">
+            <div class="row mb-3">
+                <label for="input">Go to <a href="https://animator.wokwi.com/" target="_blank">Wokwi Animator</a> and paste the generated code here:</label>
             </div>
-            <div class="input-row">
-                <textarea id="input" class="input" rows="10" cols="80" wrap="off" placeholder="Paste your code here"></textarea>
+            <div class="row">
+                <textarea id="input" class="md-textarea form-control col col-12 mb-3" rows="10" wrap="off" placeholder="Paste your code here"></textarea>
             </div>
-            <div class="input-row">
+            <div class="row">
                 <button id="compress" type="submit" class="btn btn-primary btn-success col-12">Compress</button>
             </div>
         </form>
-        <div class="resultpane">
+        <div class="resultpane w-100">
             <div id="error" class="row col alert alert-danger collapse" role="alert"></div>
-            <div class=input-row">
-                <div>Compressed Animation:</div>
+            <div class="row mb-3">
+                <label class="col col-md-6" for="output">Compressed Animation:</label>
+                <span id="stats" class="col col-md-6"></span>
             </div>
-            <div class="input-row">
-                <textarea id="output" class="output" rows="30" cols="80" wrap="off" placeholder="Compressed code will appear here"></textarea>
+            <div class="clipboard">
+                <button id="copy-button" class="btn-clipboard" title="Copy to clipboard" data-bs-toggle="tooltip" onclick="copyToClipboard()">Copy</button>
+            </div>
+            <div class="row">
+                <textarea id="output" class="md-textarea form-control col col-12" rows="30" readonly wrap="off" placeholder="Generated code will appear here"></textarea>
             </div>
         </div>
     </div>

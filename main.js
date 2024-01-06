@@ -64,13 +64,29 @@ function compressFromBrowser() {
     try {
         let inputCode = document.getElementById('input').value
         let useDeltaCompression = true //document.getElementById('useDeltaCompression').checked
-        let code = compressAnimationFromCode(inputCode, useDeltaCompression)
+        const {code, animation, originalSize, compressedSize} = compressAnimationFromCode(inputCode, useDeltaCompression)
         let output = document.getElementById('output')
         output.value = code
+        document.getElementById('stats').innerHTML = `${originalSize} -> ${compressedSize} bytes`
     } catch (e) {
         errorElement.innerHTML = e.message
         errorElement.classList.add('show')
     }
+}
+
+function copyToClipboard() {
+    let text = document.getElementById('output').value
+    navigator.clipboard.writeText(text)
+    let button = document.getElementById('copy-button')
+    const tooltip = bootstrap.Tooltip.getInstance('#copy-button')
+    button.setAttribute('data-bs-original-title', 'Copied!')
+    tooltip.update()
+    tooltip.show()
+    setTimeout(function () {
+        tooltip.hide()
+        button.setAttribute('data-bs-original-title', 'Copy to clipboard')
+        tooltip.update()
+    }, 3000)
 }
 
 function compressAnimationFromCode(code, useDeltaCompression) {
@@ -84,7 +100,12 @@ function compressAnimationFromCode(code, useDeltaCompression) {
     let compressedData = animation.getCompressedAnimationData()
     console.log(`Compressed animation from ${originalSize} to ${compressedData.length} bytes`)
     verifyCompression(animation, compressedData)
-    return generateEmbeddingCode(animation, compressedData)
+    return {
+        code: generateEmbeddingCode(animation, compressedData),
+        animation: animation,
+        originalSize: originalSize,
+        compressedSize: compressedData.length
+    }
 }
 
 function generateEmbeddingCode(animation, compressedData) {
@@ -95,11 +116,11 @@ function generateEmbeddingCode(animation, compressedData) {
     code += `#define SCREEN_I2C_ADDR 0x3D // or 0x3C\n`
     code += `#define SCREEN_WIDTH 128     // OLED display width, in pixels\n`
     code += `#define SCREEN_HEIGHT 64     // OLED display height, in pixels\n`
-    code += `#define OLED_RST_PIN -1      // Reset pin (-1 if not available)`
+    code += `#define OLED_RST_PIN -1      // Reset pin (-1 if not available)\n`
     code += `Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);\n`
     code += `\n`
     code += `// clang-format off\n`
-    code += `const byte PROGMEM animationData[] = {${compressedData.join(',')}};\n`
+    code += `const byte PROGMEM animationData[${compressedData.length}] = {${compressedData.join(',')}};\n`
     code += `// clang-format on\n`
     code += `\n`
     code += `Animation animation(animationData, &display, 0, 0);\n`
@@ -111,8 +132,8 @@ function generateEmbeddingCode(animation, compressedData) {
     code += `}\n`
     code += `\n`
     code += `void loop() {\n`
-    code += `  animation.run();\n`
-    code += `  if (animation.isFinished()) {\n`
+    code += `  animation.update();\n`
+    code += `  if (animation.finished()) {\n`
     code += `    animation.start();\n`
     code += `  }\n`
     code += `}\n`

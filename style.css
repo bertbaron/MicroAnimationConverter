@@ -47,6 +47,47 @@ body {
     padding: 10px;
 }
 
+
+.clipboard {
+    display: block;
+    position: relative;
+    float: right;
+}
+
+.btn-clipboard {
+    position: absolute;
+    top: .5rem;
+    right: 0;
+    z-index: 10;
+    display: block;
+    padding: .25rem .5rem;
+    font-size: 75%;
+    color: #818a91;
+    background-color: transparent;
+    border: 0;
+    border-radius: .25rem;
+}
+
+.btn-clipboard:hover {
+    color: #fff;
+    background-color: #027de7;
+}
+
+.resultpane {
+    padding: 10px;
+}
+
+#output {
+    outline: none;
+    background-color: white;
+    border-top: 2px solid #ced4da;;
+    border-bottom: 2px solid #ced4da;;
+    border-left: 0;
+    border-right: 0;
+    border-radius: 0;
+    margin-bottom: 0.4rem;
+}
+
 footer {
     font-family: var(--sans-font-family);
     font-size: 60%;
