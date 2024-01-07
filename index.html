@@ -38,10 +38,18 @@
                 <label for="input">Go to <a href="https://animator.wokwi.com/" target="_blank">Wokwi Animator</a> and paste the generated code here:</label>
             </div>
             <div class="row">
-                <textarea id="input" class="md-textarea form-control col col-12 mb-3" rows="10" wrap="off" placeholder="Paste your code here"></textarea>
+                <textarea id="input" class="md-textarea form-control col col-12 mb-3 font-monospace" rows="10" wrap="off" placeholder="Paste your code here"></textarea>
             </div>
             <div class="row">
-                <button id="compress" type="submit" class="btn btn-primary btn-success col-12">Compress</button>
+                <div class="col col-md-6">
+                    <button id="compress" type="submit" class="btn btn-primary btn-success">Compress</button>
+                </div>
+                <div class="col col-md-6">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" checked="checked" id="useDeltaCompression">
+                        <label class="form-check-label" for="useDeltaCompression" title="Disable to allow displaying frames in any order" data-bs-toggle="tooltip">Delta Compression</label>
+                    </div>
+                </div>
             </div>
         </form>
         <div class="resultpane w-100">
@@ -54,7 +62,7 @@
                 <button id="copy-button" class="btn-clipboard" title="Copy to clipboard" data-bs-toggle="tooltip" onclick="copyToClipboard()">Copy</button>
             </div>
             <div class="row">
-                <textarea id="output" class="md-textarea form-control col col-12" rows="30" readonly wrap="off" placeholder="Generated code will appear here"></textarea>
+                <textarea id="output" class="md-textarea form-control col col-12 font-monospace" rows="30" readonly wrap="off" placeholder="Generated code will appear here"></textarea>
             </div>
         </div>
     </div>

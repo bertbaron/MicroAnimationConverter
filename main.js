@@ -1,5 +1,5 @@
-const WHITE = 0
-const BLACK = 1
+const BG = 0
+const FG = 1
 const TRANSPARENT = 2
 
 const FRAME_TYPE_MASK = 0b11000000
@@ -41,7 +41,7 @@ function runFromCLI() {
 
     var fs = require('fs');
     let inputCode = fs.readFileSync(input, 'utf8')
-    let code = compressAnimationFromCode(inputCode, useDeltaCompression)
+    const {code, animation, originalSize, compressedSize} = compressAnimationFromCode(inputCode, useDeltaCompression)
     console.log(code)
 }
 
@@ -52,7 +52,7 @@ function usage() {
     console.log('  --no-delta  Disable delta compression')
 }
 
-var compress = function(){
+var compress = function () {
     compressFromBrowser();
 };
 
@@ -63,8 +63,13 @@ function compressFromBrowser() {
 
     try {
         let inputCode = document.getElementById('input').value
-        let useDeltaCompression = true //document.getElementById('useDeltaCompression').checked
-        const {code, animation, originalSize, compressedSize} = compressAnimationFromCode(inputCode, useDeltaCompression)
+        let useDeltaCompression = document.getElementById('useDeltaCompression').checked
+        const {
+            code,
+            animation,
+            originalSize,
+            compressedSize
+        } = compressAnimationFromCode(inputCode, useDeltaCompression)
         let output = document.getElementById('output')
         output.value = code
         document.getElementById('stats').innerHTML = `${originalSize} -> ${compressedSize} bytes`
@@ -92,9 +97,9 @@ function copyToClipboard() {
 function compressAnimationFromCode(code, useDeltaCompression) {
     let animation = parseAnimation(code)
     console.log(`Parsed animation with ${animation.frames.length} frames of size ${animation.width}x${animation.height}`)
-    for (i = 0; i < animation.frames.length; i++) {
-        animation.frames[i].printToConsole(i)
-    }
+    // for (i = 0; i < animation.frames.length; i++) {
+    //     animation.frames[i].printToConsole(i)
+    // }
     const originalSize = animation.frames.length * Math.ceil(animation.width / 8) * animation.height
     compressAnimation(animation, useDeltaCompression)
     let compressedData = animation.getCompressedAnimationData()
@@ -109,33 +114,37 @@ function compressAnimationFromCode(code, useDeltaCompression) {
 }
 
 function generateEmbeddingCode(animation, compressedData) {
+    const screenWidth = 128
+    const screenHeight = 64
+    const xOffset = Math.floor((screenWidth - animation.width) / 2)
+    const yOffset = Math.floor((screenHeight - animation.height) / 2)
     let code = `#include <Arduino.h>\n`
     code += `#include <Adafruit_SSD1306.h>\n`
-    code += `#include <Animation.h>\n`
+    code += `#include <MicroAnimation.h>\n`
     code += `\n`
     code += `#define SCREEN_I2C_ADDR 0x3D // or 0x3C\n`
-    code += `#define SCREEN_WIDTH 128     // OLED display width, in pixels\n`
-    code += `#define SCREEN_HEIGHT 64     // OLED display height, in pixels\n`
+    code += `#define SCREEN_WIDTH ${screenWidth}     // OLED display width, in pixels\n`
+    code += `#define SCREEN_HEIGHT ${screenHeight}     // OLED display height, in pixels\n`
     code += `#define OLED_RST_PIN -1      // Reset pin (-1 if not available)\n`
-    code += `Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);\n`
+    code += `\n`
+    code += `Adafruit_SSD1306 display(128, 64, &Wire, OLED_RST_PIN);\n`
     code += `\n`
     code += `// clang-format off\n`
-    code += `const byte PROGMEM animationData[${compressedData.length}] = {${compressedData.join(',')}};\n`
+    code += `const byte PROGMEM animationData[] = {${compressedData.join(',')}};\n`
     code += `// clang-format on\n`
     code += `\n`
-    code += `Animation animation(animationData, &display, 0, 0);\n`
+    code += `MicroAnimation animation(animationData, &display, ${xOffset}, ${yOffset});\n`
     code += `\n`
     code += `void setup() {\n`
-    code += `  display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS);\n`
+    code += `  display.begin(SSD1306_SWITCHCAPVCC, SCREEN_I2C_ADDR  );\n`
     code += `  display.clearDisplay();\n`
-    code += `  animation.start();\n`
+    code += `  animation.start(true); // start and loop\n`
     code += `}\n`
     code += `\n`
     code += `void loop() {\n`
     code += `  animation.update();\n`
-    code += `  if (animation.finished()) {\n`
-    code += `    animation.start();\n`
-    code += `  }\n`
+    code += `  // do other stuff\n`
+    code += `  delay(10);\n`
     code += `}\n`
 
     return code
@@ -154,14 +163,16 @@ function verifyCompression(animation, compressedData) {
     }
 
     let lastFrame = null
-    const frameCount = compressedData[0]
-    const w = compressedData[1]
-    const h = compressedData[2]
+    const type = compressedData[0]
+    const frameCount = compressedData[1]
+    const w = compressedData[2]
+    const h = compressedData[3]
+    assertEqual('type', type, 0)
     assertEqual('frame count', animation.frames.length, frameCount)
     assertEqual('width', animation.width, w)
     assertEqual('height', animation.height, h)
     for (let i = 0; i < animation.frames.length; i++) {
-        const dataIndex = readInt(compressedData, i * 2 + 3)
+        const dataIndex = readInt(compressedData, i * 2 + 4)
         let frame = decompressFrame(w, h, compressedData.slice(dataIndex), lastFrame)
         let expectedFrame = animation.frames[i]
         lastFrame = frame
@@ -177,7 +188,7 @@ function verifyCompression(animation, compressedData) {
             }
         } catch (e) {
             console.log(`Expected frame ${i}: ${e.message}`)
-            expectedFrame.printToConsole()
+            expectedFrame.printToConsole(i)
             console.log(`Actual frame ${i}`)
             frame.printToConsole()
             throw e
@@ -225,9 +236,9 @@ function parseFrame(w, h, bitmapData) {
                 b = bitmapData[j * byteWidth + Math.floor(i / 8)]
             }
             if (b & 0x80) {
-                data.push(BLACK)
+                data.push(FG)
             } else {
-                data.push(WHITE)
+                data.push(BG)
             }
         }
     }
@@ -268,6 +279,7 @@ function compressFrame(frame, lastFrame) {
 
 function compressFrameRLE(frame, lastFrame) {
     const runLengths = computeRunLenghts(lastFrame, frame);
+    let opaqueData = frame.data
 
     /*
      We will never have two subsequent runs for the same color. Therefore, we only need the color delta with previous run.
@@ -283,30 +295,55 @@ function compressFrameRLE(frame, lastFrame) {
     const frameType = useDeltaCompression ? FRAME_TYPE_RLE_DELTA : FRAME_TYPE_RLE
     let compressed = [frameType | initialColor]
     let lastColor = initialColor
+    let pixelIndex = 0
     for (let [color, runLength] of runLengths) {
         if (color === lastColor) {
             throw new Error(`Assertion failed, color ${color} is same as last color ${lastColor}`)
         }
-        const colorDelta = (color - lastColor + numberOfColors) % numberOfColors - 1
-        const colorBits = useDeltaCompression ? colorDelta << 6 : 0
-        if (colorBits > 255) {
-            throw new Error(`Assertion failed, color bits ${colorBits} is too large`)
-        }
-        lastColor = color
-        if (runLength > maxShortRunlength) {
-            let rl = runLength
-            let bytes = []
-            while (rl > maxShortRunlength) {
-                let rlByte = rl & 0b01111111
-                rl >>= 7
-                bytes.push(MULTIBYTE_FLAG | rlByte)
+        if (color === -1) {
+            // escaped sequence, push a runlength of 0 without Mutibyte flag set, which would normally never happen
+            compressed.push(0)
+            // for each 7 bits from opaquedata, push the bitmask. All but the last one with the Multibyte flag set
+            for (let b = 0; b < runLength / 7; b++) {
+                let mask = 0
+                for (let pixel = 0; pixel < 7; pixel++) {
+                    lastColor = opaqueData[pixelIndex++]
+                    mask = (mask << 1) | lastColor
+                }
+                // assert that in the first byte not all 7 bits are the same
+                if (b === 0 && (mask === 0 || mask === 0b01111111)) {
+                    // This makes no sens, and we may use this in the future for special cases
+                    throw new Error(`Assertion failed, escaped sequence starting with ${mask} is not allowed`)
+                }
+
+                if (b < runLength / 7 - 1) {
+                    mask |= MULTIBYTE_FLAG
+                }
+                compressed.push(mask)
             }
-            bytes.push(colorBits | MULTIBYTE_FLAG | rl)
-            bytes[0] &= 0b01111111
-            bytes.reverse()
-            compressed.push(...bytes)
         } else {
-            compressed.push(colorBits | runLength)
+            const colorDelta = (color - lastColor + numberOfColors) % numberOfColors - 1
+            const colorBits = useDeltaCompression ? colorDelta << 6 : 0
+            if (colorBits > 255) {
+                throw new Error(`Assertion failed, color bits ${colorBits} is too large`)
+            }
+            lastColor = color
+            if (runLength > maxShortRunlength) {
+                let rl = runLength
+                let bytes = []
+                while (rl > maxShortRunlength) {
+                    let rlByte = rl & 0b01111111
+                    rl >>= 7
+                    bytes.push(MULTIBYTE_FLAG | rlByte)
+                }
+                bytes.push(colorBits | MULTIBYTE_FLAG | rl)
+                bytes[0] &= 0b01111111
+                bytes.reverse()
+                compressed.push(...bytes)
+            } else {
+                compressed.push(colorBits | runLength)
+            }
+            pixelIndex += runLength
         }
     }
     return compressed
@@ -344,7 +381,87 @@ function computeRunLenghts(lastFrame, frame) {
         idx += runLength[1]
     }
 
+    runLengths = optimizeWithEscapes(runLengths, opaqueData)
+
     return runLengths
+}
+
+/**
+ * When there is a sequence of short runs it may be more efficient to not use RLE for those runs.
+ */
+function optimizeWithEscapes(runs, opaqueData) {
+    let result = runs.map((run) => [run[0], run[1]])
+
+    // array mapping the start of a run to the pixel index
+    let pixelIndices = []
+    let pixelIndex = 0
+    for (let runLength of runs) {
+        pixelIndices.push(pixelIndex)
+        pixelIndex += runLength[1]
+    }
+    pixelIndices.push(pixelIndex)
+    pixelIndices.push(Number.MAX_SAFE_INTEGER)
+
+    function pixelIndexToRunIndex(pixelIndex) {
+        return pixelIndices.findIndex((pi) => pi > pixelIndex) - 1
+    }
+
+    function runLengthsUsed(numberOfPixels, endPixelIndex) {
+        let nextRunIndex = pixelIndexToRunIndex(endPixelIndex)
+        let firstRunIndex = pixelIndexToRunIndex(endPixelIndex - numberOfPixels - 1) + 1
+        return nextRunIndex - firstRunIndex
+    }
+
+    // Replaces the elements in the runLengths array with a single escaped sequence
+    function escapeRun(length, endPixelIndex) {
+        let nextRunIndex = pixelIndexToRunIndex(endPixelIndex)
+        let firstRunIndex = pixelIndexToRunIndex(endPixelIndex - length - 1) + 1
+
+        // We need to update the length of the previous run (length may not change)
+        if (firstRunIndex > 0) {
+            result[firstRunIndex - 1][1] = endPixelIndex - length - pixelIndices[firstRunIndex - 1]
+        }
+        result.splice(firstRunIndex, nextRunIndex - firstRunIndex, [-1, length])
+    }
+
+    for (let endRun = runs.length - 1; endRun >= 0; endRun--) {
+        const endPixelIndex = pixelIndices[endRun + 1] // exclusive
+        if (endRun < runs.length - 1 && runs[endRun][0] === TRANSPARENT) {
+            // get the actual color of the last pixel in the run
+            if (opaqueData[endPixelIndex - 1] === runs[endRun + 1][0]) {
+                // we can't end the escaped sequence here, because the color is the same as the next run
+                continue
+            }
+        }
+
+        let escapedBlocks = 1 // number of 7-bit blocks
+        let bestSaving = -1 // number of bytes saved best found so far
+        let bestEscapedBlocks = -1 // number of escaped blocks for best saving
+        while (endPixelIndex - escapedBlocks * 7 >= 0) { // TODO check if this is correct, might be off by 1 or so
+            let costs = escapedBlocks + 1 // 1 byte for the escape marker
+            let spared = runLengthsUsed(escapedBlocks * 7, endPixelIndex)
+            let saving = spared - costs
+            // debugEvaluation(endRun, escapedBlocks, spared, costs, saving)
+            if (saving < 0 || saving < bestSaving) {
+                if (bestSaving > 0) {
+                    escapeRun(bestEscapedBlocks * 7, endPixelIndex)
+                    endRun = pixelIndexToRunIndex(endPixelIndex - bestEscapedBlocks * 7 - 1) // TODO check if this is correct
+                } // else RLE is more efficient for this sequence
+                bestSaving = -1
+                break
+            }
+            if (saving > bestSaving) {
+                bestSaving = saving
+                bestEscapedBlocks = escapedBlocks
+            }
+            escapedBlocks++
+        }
+        if (bestSaving > 0) {
+            escapeRun(bestEscapedBlocks * 7, endPixelIndex)
+            endRun = pixelIndexToRunIndex(endPixelIndex - bestEscapedBlocks * 7 - 1) // TODO check if this is correct
+        }
+    }
+    return result
 }
 
 function decompressFrame(w, h, compressedData, lastFrame) {
@@ -353,41 +470,63 @@ function decompressFrame(w, h, compressedData, lastFrame) {
         const bitmapData = compressedData.slice(1)
         return parseFrame(w, h, bitmapData)
     }
-    let useDeltaCompression = (type & FRAME_TYPE_MASK) === FRAME_TYPE_RLE_DELTA
+    let isDelta = (type & FRAME_TYPE_MASK) === FRAME_TYPE_RLE_DELTA
     let data = []
     let idx = 1
     let lastColor = type & RLE_INITIAL_COLOR_MASK
     let startPixel = 0
     while (startPixel < w * h) {
-        const value = compressedData[idx]
-        let color = useDeltaCompression ? (lastColor + ((value >> 6) & 0x01) + 1) % 3 : 1 - lastColor
+        const value = compressedData[idx++]
+        // uint8_t color = useDeltaCompression ? lastColor + ((value >> 6) & 0x01) + 1 % 3 : 1 - lastColor;
+        let color = isDelta ? (lastColor + 1 + ((value >> 6) & 0x01)) % 3 : 1 - lastColor
         if (color === lastColor) {
             throw new Error(`Assertion failed, color ${color} is same as last color ${lastColor}`)
         }
         lastColor = color
-        let runLength = useDeltaCompression ? value & 0b00111111 : value & 0b01111111
+        let runLength = isDelta ? value & 0b00111111 : value & 0b01111111
         if (value & MULTIBYTE_FLAG) {
-            idx++
-            let rlByte = compressedData[idx]
+            let rlByte = compressedData[idx++]
             runLength = (runLength << 7) | (rlByte & 0b01111111)
             while (rlByte & MULTIBYTE_FLAG) {
-                idx++
-                rlByte = compressedData[idx]
+                rlByte = compressedData[idx++]
                 runLength = (runLength << 7) | (rlByte & 0b01111111)
             }
         }
-        startPixel += runLength
-        for (let i = 0; i < runLength; i++) {
-            if (color === TRANSPARENT) {
-                if (!compressedData || !lastFrame) {
-                    throw new Error('Assertion failed, transparent color without compression or last frame')
+
+        if (runLength === 0) {
+            let escapedByte = 0
+            do {
+                escapedByte = compressedData[idx++]
+                let bits = escapedByte
+                for (let i = 0; i < 7; i++) {
+                    color = bits & 0x40
+                    let pixelColor = color ? FG : BG
+                    const x = startPixel % w
+                    const y = Math.floor(startPixel / w)
+                    const expectedLength = x + y * w
+                    if (data.length !== expectedLength) {
+                        throw new Error(`Assertion failed, expected data length ${expectedLength} but was ${data.length}`)
+                    }
+                    data.push(pixelColor)
+                    bits <<= 1
+                    startPixel++
                 }
-                data.push(lastFrame.data[data.length])
-            } else {
-                data.push(color)
+            } while (escapedByte & MULTIBYTE_FLAG)
+            lastColor = color ? FG : BG
+        } else {
+            // normal sequence
+            startPixel += runLength
+            for (let i = 0; i < runLength; i++) {
+                if (color === TRANSPARENT) {
+                    if (!compressedData || !lastFrame) {
+                        throw new Error('Assertion failed, transparent color without compression or last frame')
+                    }
+                    data.push(lastFrame.data[data.length])
+                } else {
+                    data.push(color)
+                }
             }
         }
-        idx++
     }
     return new Frame(null, w, h, data)
 }
@@ -414,11 +553,11 @@ class Annimation {
 
     /*
      Compressed data format:
-     [frameCount, width, height, idx0, idx1, idx2, ... idxN+1, frame0, frame1, frame2, ... frameN]
+     [type/version byte, frameCount, width, height, idx0, idx1, idx2, ... idxN+1, frame0, frame1, frame2, ... frameN]
      where the indices point to the start of each frame in the array
      */
     getCompressedAnimationData() {
-        let data = [this.frames.length, this.width, this.height]
+        let data = [0, this.frames.length, this.width, this.height]
         let index = data.length + this.frames.length * 2
         for (let frame of this.frames) {
             pushInt(data, index)
@@ -448,10 +587,10 @@ class Frame {
             for (let x = 0; x < this.width; x++) {
                 let pixel = this.data[y * this.width + x]
                 switch (pixel) {
-                    case WHITE:
+                    case BG:
                         row += '-'
                         break
-                    case BLACK:
+                    case FG:
                         row += '#'
                         break
                     case TRANSPARENT:
@@ -474,7 +613,17 @@ function readInt(array, idx) {
 }
 
 function initPage() {
-    console.log('Initializing page')
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl, {delay: {show: 1000, hide: 200}})
+    })
+}
+
+// export functions for testing
+if (typeof module !== 'undefined') {
+    module.exports = {
+        optimizeWithEscapes: optimizeWithEscapes,
+    }
 }
 
 if (typeof process == 'undefined') {
